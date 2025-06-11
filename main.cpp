@@ -9,10 +9,21 @@
 using ProcessingTimes = std::vector<std::vector<double>>;
 using Permutation = std::vector<int>;
 
-// Funkcja do obliczania Cmax dla danej permutacji
-// processing_times[job_idx][machine_idx]
-// permutation[i] = job_idx
+/**
+ * @brief Oblicza Cmax (maksymalny czas zakończenia) dla danej permutacji zadań w problemie Flow Shop.
+ *
+ * Cmax to czas, w którym ostatnie zadanie w permutacji zostanie zakończone na ostatniej maszynie.
+ * Wykorzystuje wzór rekurencyjny: C_pi_i,z = max(C_pi_i,z-1, C_pi_i-1,z) + p_pi_i,z
+ * gdzie C_pi_i,z to czas zakończenia i-tego zadania w permutacji na z-tej maszynie,
+ * a p_pi_i,z to czas przetwarzania i-tego zadania w permutacji na z-tej maszynie.
+ *
+ * @param p_times Macierz czasów przetwarzania zadań. p_times[job_idx][machine_idx] oznacza czas
+ * przetwarzania zadania o indeksie 'job_idx' na maszynie o indeksie 'machine_idx'.
+ * @param perm Permutacja (kolejność) zadań, dla której ma być obliczone Cmax.
+ * @return Wartość Cmax dla podanej permutacji.
+ */
 double calculate_cmax(const ProcessingTimes& p_times, const Permutation& perm) {
+    // Sprawdzenie przypadków brzegowych: pusta permutacja lub brak danych o czasach przetwarzania
     if (perm.empty()) {
         return 0.0;
     }
@@ -20,39 +31,63 @@ double calculate_cmax(const ProcessingTimes& p_times, const Permutation& perm) {
         return 0.0;
     }
 
-    int n_jobs_in_perm = perm.size();
-    int m_machines = p_times[0].size();
+    int n_jobs_in_perm = perm.size();      // Liczba zadań w bieżącej permutacji
+    int m_machines = p_times[0].size();     // Liczba maszyn (zakładamy, że wszystkie zadania mają taką samą liczbę operacji)
 
     if (m_machines == 0) {
         return 0.0;
     }
 
-    // completion_times[i][j] = czas zakończenia i-tego zadania w permutacji na maszynie j
+    // completion_times[i][j] = czas zakończenia i-tego zadania w permutacji na maszynie j.
+    // Inicjalizacja macierzy czasów zakończenia zerami.
     std::vector<std::vector<double>> C(n_jobs_in_perm, std::vector<double>(m_machines, 0.0));
 
-    for (int i = 0; i < n_jobs_in_perm; ++i) { // Iteracja po zadaniach w permutacji
-        int current_job_idx = perm[i]; // Aktualny indeks zadania
+    // Wypełnianie macierzy czasów zakończenia zgodnie ze wzorem rekurencyjnym
+    for (int i = 0; i < n_jobs_in_perm; ++i) { // Iteracja po zadaniach w danej permutacji
+        int current_job_idx = perm[i];        // Pobranie indeksu oryginalnego zadania z permutacji
         for (int j = 0; j < m_machines; ++j) { // Iteracja po maszynach
+            // Czas zakończenia poprzedniego zadania na tej samej maszynie
             double prev_job_same_machine_completion = (i == 0) ? 0.0 : C[i - 1][j];
+            // Czas zakończenia tego samego zadania na poprzedniej maszynie
             double same_job_prev_machine_completion = (j == 0) ? 0.0 : C[i][j - 1];
 
+            // Obliczenie czasu zakończenia bieżącej operacji
             C[i][j] = std::max(prev_job_same_machine_completion, same_job_prev_machine_completion) + p_times[current_job_idx][j];
         }
     }
+    // Cmax to czas zakończenia ostatniego zadania na ostatniej maszynie
     return C[n_jobs_in_perm - 1][m_machines - 1];
 }
 
-// Funkcja pomocnicza do wyświetlania permutacji i Cmax
+/**
+ * @brief Wyświetla wynik działania algorytmu: nazwę algorytmu, znalezioną permutację i obliczony Cmax.
+ *
+ * @param algorithm_name Nazwa algorytmu do wyświetlenia.
+ * @param perm Najlepsza znaleziona permutacja zadań.
+ * @param cmax Wartość Cmax odpowiadająca najlepszej permutacji.
+ */
 void print_solution(const std::string& algorithm_name, const Permutation& perm, double cmax) {
     std::cout << algorithm_name << ":\n";
     std::cout << "  Permutacja: ";
     for (size_t i = 0; i < perm.size(); ++i) {
-        std::cout << perm[i] + 1 << (i == perm.size() - 1 ? "" : " -> "); // Wyświetlamy zadania 1-indeksowane
+        // Wyświetlamy zadania 1-indeksowane dla lepszej czytelności
+        std::cout << perm[i] + 1 << (i == perm.size() - 1 ? "" : " -> ");
     }
+    // Formatowanie Cmax do dwóch miejsc po przecinku
     std::cout << "\n  Cmax: " << std::fixed << std::setprecision(2) << cmax << "\n\n";
 }
 
-// 1. Przegląd zupełny
+/**
+ * @brief Implementacja algorytmu Przeglądu Zupełnego (Brute Force).
+ *
+ * Algorytm generuje wszystkie możliwe permutacje zadań i dla każdej oblicza Cmax,
+ * wybierając permutację z najmniejszym Cmax.
+ * Jest to algorytm optymalny, ale jego złożoność jest silnie rosnąca (n!).
+ *
+ * @param p_times Macierz czasów przetwarzania zadań.
+ * @param best_cmax_val Referencja do zmiennej, w której zostanie zwrócona najlepsza znaleziona wartość Cmax.
+ * @return Najlepsza permutacja zadań minimalizująca Cmax.
+ */
 Permutation brute_force_algorithm(const ProcessingTimes& p_times, double& best_cmax_val) {
     int n_jobs = p_times.size();
     if (n_jobs == 0) {
@@ -60,25 +95,37 @@ Permutation brute_force_algorithm(const ProcessingTimes& p_times, double& best_c
         return {};
     }
 
-
+    // Inicjalizacja bieżącej permutacji (0, 1, ..., n-1)
     Permutation current_perm(n_jobs);
-    std::iota(current_perm.begin(), current_perm.end(), 0); // Inicjalizacja: 0, 1, ..., n-1
+    std::iota(current_perm.begin(), current_perm.end(), 0); // Wypełnia sekwencją 0, 1, ..., n-1
 
-    Permutation best_perm = current_perm;
-    best_cmax_val = std::numeric_limits<double>::max();
+    Permutation best_perm = current_perm;                          // Inicjalizacja najlepszej permutacji
+    best_cmax_val = std::numeric_limits<double>::max();    // Ustawienie początkowego Cmax na maksymalną wartość
 
+    // Iteracja przez wszystkie permutacje
     do {
-        double cmax = calculate_cmax(p_times, current_perm);
+        double cmax = calculate_cmax(p_times, current_perm); // Oblicz Cmax dla bieżącej permutacji
         if (cmax < best_cmax_val) {
-            best_cmax_val = cmax;
-            best_perm = current_perm;
+            best_cmax_val = cmax;           // Zaktualizuj najlepszy Cmax
+            best_perm = current_perm;       // Zaktualizuj najlepszą permutację
         }
-    } while (std::next_permutation(current_perm.begin(), current_perm.end()));
+    } while (std::next_permutation(current_perm.begin(), current_perm.end())); // Generuj następną permutację
 
     return best_perm;
 }
 
-// 2. Algorytm NEH
+/**
+ * @brief Implementacja heurystyki NEH (Nawaz, Enscore, Ham).
+ *
+ * Algorytm konstrukcyjny uznawany za najlepszą heurystykę dla problemu Flow Shop.
+ * 1. Sortuje zadania malejąco według sumy czasów przetwarzania na wszystkich maszynach.
+ * 2. Iteracyjnie wstawia zadania do częściowej permutacji, wybierając pozycję minimalizującą Cmax.
+ * Złożoność obliczeniowa klasycznej wersji to O(n^3 * m).
+ *
+ * @param p_times Macierz czasów przetwarzania zadań.
+ * @param best_cmax_val Referencja do zmiennej, w której zostanie zwrócona najlepsza znaleziona wartość Cmax.
+ * @return Najlepsza znaleziona permutacja przez algorytm NEH.
+ */
 Permutation neh_algorithm(const ProcessingTimes& p_times, double& best_cmax_val) {
     int n_jobs = p_times.size();
     if (n_jobs == 0) {
@@ -91,61 +138,82 @@ Permutation neh_algorithm(const ProcessingTimes& p_times, double& best_cmax_val)
         return {};
     }
 
-    // Krok 1: Oblicz sumę czasów przetwarzania dla każdego zadania
+    // Krok 1: Oblicz sumę czasów przetwarzania dla każdego zadania na wszystkich maszynach.
+    // job_total_times przechowuje pary {suma czasów, indeks zadania}.
     std::vector<std::pair<double, int>> job_total_times(n_jobs);
     for (int i = 0; i < n_jobs; ++i) {
         double total_time = 0;
         for (int j = 0; j < m_machines; ++j) {
             total_time += p_times[i][j];
         }
-        job_total_times[i] = {total_time, i}; // {suma czasów, indeks zadania}
+        job_total_times[i] = {total_time, i};
     }
 
-    // Krok 2: Posortuj zadania malejąco wg sumy czasów
+    // Krok 2: Posortuj zadania malejąco według sumy czasów przetwarzania.
     std::sort(job_total_times.rbegin(), job_total_times.rend());
 
-    Permutation current_best_perm;
+    Permutation current_best_perm; // Aktualna najlepsza permutacja budowana iteracyjnie
 
-    // Krok 3 i 4: Iteracyjne dodawanie zadań
+    // Krok 3 i 4: Iteracyjnie dodawaj zadania do permutacji
     for (int k = 0; k < n_jobs; ++k) {
-        int job_to_insert = job_total_times[k].second;
+        int job_to_insert = job_total_times[k].second; // Zadanie do wstawienia
 
-        Permutation best_insertion_perm;
-        double min_cmax_for_insertion = std::numeric_limits<double>::max();
+        Permutation best_insertion_perm;            // Najlepsza permutacja po wstawieniu bieżącego zadania
+        double min_cmax_for_insertion = std::numeric_limits<double>::max(); // Minimalny Cmax dla bieżącego kroku
 
-        // Wypróbuj wstawienie zadania na każdą możliwą pozycję (k+1 pozycji)
+        // Wypróbuj wstawienie zadania na każdą możliwą pozycję (od 0 do k)
         for (int pos = 0; pos <= k; ++pos) {
-            Permutation temp_perm = current_best_perm;
-            temp_perm.insert(temp_perm.begin() + pos, job_to_insert);
+            Permutation temp_perm = current_best_perm; // Kopia obecnej częściowej permutacji
+            temp_perm.insert(temp_perm.begin() + pos, job_to_insert); // Wstaw zadanie na daną pozycję
 
-            double cmax = calculate_cmax(p_times, temp_perm);
+            double cmax = calculate_cmax(p_times, temp_perm); // Oblicz Cmax dla nowej permutacji
 
+            // Jeśli znaleziono lepszą pozycję wstawienia
             if (cmax < min_cmax_for_insertion) {
-                min_cmax_for_insertion = cmax;
-                best_insertion_perm = temp_perm;
+                min_cmax_for_insertion = cmax;      // Zaktualizuj minimalny Cmax dla bieżącego kroku
+                best_insertion_perm = temp_perm;     // Zaktualizuj najlepszą permutację dla bieżącego kroku
             }
         }
-        current_best_perm = best_insertion_perm;
-        best_cmax_val = min_cmax_for_insertion;
+        current_best_perm = best_insertion_perm; // Zaktualizuj główną permutację
+        best_cmax_val = min_cmax_for_insertion;  // Zaktualizuj najlepszy Cmax
     }
-
 
     return current_best_perm;
 }
 
-
-// Algorytm Johnsona dla m=2
+/**
+ * @brief Implementacja algorytmu Johnsona dla problemu z dwoma maszynami (m=2).
+ *
+ * Algorytm Johnsona jest optymalny dla problemu Flow Shop z dwiema maszynami.
+ * Złożoność obliczeniowa wynosi O(n log n) ze względu na sortowanie.
+ * Dzieli zadania na dwie grupy:
+ * 1. Zadania, dla których czas przetwarzania na maszynie M1 jest mniejszy niż na M2 (p1 < p2).
+ * Te zadania są sortowane rosnąco według p1.
+ * 2. Zadania, dla których czas przetwarzania na maszynie M1 jest większy lub równy niż na M2 (p1 >= p2).
+ * Te zadania są sortowane malejąco według p2.
+ * Ostateczna permutacja to konkatenacja posortowanych zadań z grupy 1 i grupy 2.
+ *
+ * @param p_times Macierz czasów przetwarzania zadań (oczekiwane 2 kolumny dla maszyn M1 i M2).
+ * @param best_cmax_val Referencja do zmiennej, w której zostanie zwrócona najlepsza znaleziona wartość Cmax.
+ * @return Optymalna permutacja zadań dla m=2.
+ */
 Permutation johnson_algorithm(const ProcessingTimes& p_times, double& best_cmax_val) {
     int n_jobs = p_times.size();
     if (n_jobs == 0) {
         best_cmax_val = 0.0;
         return {};
     }
+    // Algorytm Johnsona wymaga dokładnie dwóch maszyn
+    if (p_times[0].size() != 2) {
+        std::cerr << "Algorytm Johnsona wymaga 2 maszyn. Podano " << p_times[0].size() << " maszyn.\n";
+        best_cmax_val = std::numeric_limits<double>::max(); // Błąd, więc zwracamy dużą wartość Cmax
+        return {};
+    }
 
-
+    // Struktura do przechowywania informacji o zadaniu
     struct JobInfo {
-        int id;
-        double p1, p2;
+        int id;     // Oryginalny indeks zadania
+        double p1, p2; // Czasy przetwarzania na maszynie M1 i M2
     };
 
     std::vector<JobInfo> jobs(n_jobs);
@@ -153,12 +221,14 @@ Permutation johnson_algorithm(const ProcessingTimes& p_times, double& best_cmax_
         jobs[i] = {i, p_times[i][0], p_times[i][1]};
     }
 
-    std::vector<int> group1, group2;
+    std::vector<int> group1, group2; // Grupy zadań dla sortowania Johnsona
+
+    // Dzielenie zadań na dwie grupy
     for (const auto& job : jobs) {
         if (job.p1 < job.p2) {
-            group1.push_back(job.id);
+            group1.push_back(job.id); // Zadanie idzie do grupy 1, jeśli p1 < p2
         } else {
-            group2.push_back(job.id);
+            group2.push_back(job.id); // Zadanie idzie do grupy 2, jeśli p1 >= p2
         }
     }
 
@@ -173,17 +243,26 @@ Permutation johnson_algorithm(const ProcessingTimes& p_times, double& best_cmax_
     });
 
     Permutation optimal_perm;
+    // Skonkatenuj posortowane grupy, aby uzyskać optymalną permutację
     optimal_perm.insert(optimal_perm.end(), group1.begin(), group1.end());
     optimal_perm.insert(optimal_perm.end(), group2.begin(), group2.end());
 
+    // Oblicz Cmax dla znalezionej permutacji
     best_cmax_val = calculate_cmax(p_times, optimal_perm);
     return optimal_perm;
 }
 
-// 3. FNEH (NEH z akceleracją)
-// 4.0 FNEH – ulepszony NEH (Fast NEH)
-// Działa jak NEH, ale po każdej iteracji wyjmuje ostatnio dodane zadanie,
-// i sprawdza, czy po ponownym wstawieniu w inne miejsce Cmax będzie lepszy.
+/**
+ * @brief Implementacja heurystyki FNEH (Fast NEH) z akceleracją.
+ *
+ * FNEH to ulepszona wersja NEH. Po każdej iteracji dodania zadania,
+ * algorytm usuwa ostatnio dodane zadanie i ponownie próbuje wstawić je na najlepszą pozycję.
+ * Ma to na celu potencjalne znalezienie lepszego rozwiązania niż klasyczny NEH.
+ *
+ * @param p_times Macierz czasów przetwarzania zadań.
+ * @param best_cmax_val Referencja do zmiennej, w której zostanie zwrócona najlepsza znaleziona wartość Cmax.
+ * @return Najlepsza znaleziona permutacja przez algorytm FNEH.
+ */
 Permutation fneh_algorithm(const ProcessingTimes& p_times, double& best_cmax_val) {
     int n_jobs = p_times.size();
     int m_machines = p_times[0].size();
@@ -192,30 +271,30 @@ Permutation fneh_algorithm(const ProcessingTimes& p_times, double& best_cmax_val
         return {};
     }
 
-    // Krok 1: policz sumy czasów przetwarzania dla każdego zadania
+    // Krok 1: Oblicz sumy czasów przetwarzania dla każdego zadania
     std::vector<std::pair<double, int>> job_total_times(n_jobs);
     for (int i = 0; i < n_jobs; ++i) {
         job_total_times[i].first = std::accumulate(p_times[i].begin(), p_times[i].end(), 0.0);
         job_total_times[i].second = i;
     }
 
-    // Krok 2: sortuj malejąco po sumie czasów
+    // Krok 2: Posortuj zadania malejąco według sumy czasów
     std::sort(job_total_times.rbegin(), job_total_times.rend());
 
-    Permutation perm; // aktualna najlepsza permutacja
-    best_cmax_val = 0.0;
+    Permutation perm; // Bieżąca najlepsza permutacja
+    best_cmax_val = 0.0; // Inicjalizacja Cmax
 
     for (int k = 0; k < n_jobs; ++k) {
-        int job_to_add = job_total_times[k].second;
+        int job_to_add = job_total_times[k].second; // Zadanie do dodania w bieżącej iteracji
 
-        Permutation best_partial_perm;
-        double best_partial_cmax = std::numeric_limits<double>::max();
+        Permutation best_partial_perm;             // Najlepsza częściowa permutacja po wstawieniu
+        double best_partial_cmax = std::numeric_limits<double>::max(); // Najlepszy Cmax dla bieżącej iteracji
 
-        // Spróbuj dodać nowe zadanie na każdą pozycję
+        // Spróbuj dodać nowe zadanie na każdą możliwą pozycję
         for (int pos = 0; pos <= perm.size(); ++pos) {
-            Permutation temp = perm;
-            temp.insert(temp.begin() + pos, job_to_add);
-            double cmax = calculate_cmax(p_times, temp);
+            Permutation temp = perm; // Kopia bieżącej permutacji
+            temp.insert(temp.begin() + pos, job_to_add); // Wstaw zadanie
+            double cmax = calculate_cmax(p_times, temp); // Oblicz Cmax
 
             if (cmax < best_partial_cmax) {
                 best_partial_cmax = cmax;
@@ -223,16 +302,19 @@ Permutation fneh_algorithm(const ProcessingTimes& p_times, double& best_cmax_val
             }
         }
 
-        perm = best_partial_perm;
-        best_cmax_val = best_partial_cmax;
+        perm = best_partial_perm;       // Zaktualizuj permutację
+        best_cmax_val = best_partial_cmax; // Zaktualizuj Cmax
 
-        // Akceleracja FNEH: usuń ostatnio dodane i przetestuj ponownie
+        // Akceleracja FNEH: usuń ostatnio dodane zadanie i przetestuj ponownie jego wstawienie
+        // Jest to optymalizacja, która próbuje poprawić znalezione rozwiązanie w danym kroku
         int last_added_job = job_to_add;
+        // Usuń ostatnio dodane zadanie z permutacji
         perm.erase(std::find(perm.begin(), perm.end(), last_added_job));
 
         Permutation fneh_best_perm;
         double fneh_best_cmax = std::numeric_limits<double>::max();
 
+        // Ponownie wstaw ostatnio dodane zadanie na najlepszą pozycję w zmodyfikowanej permutacji
         for (int pos = 0; pos <= perm.size(); ++pos) {
             Permutation temp = perm;
             temp.insert(temp.begin() + pos, last_added_job);
@@ -243,19 +325,29 @@ Permutation fneh_algorithm(const ProcessingTimes& p_times, double& best_cmax_val
             }
         }
 
-        perm = fneh_best_perm;
-        best_cmax_val = fneh_best_cmax;
+        perm = fneh_best_perm;       // Zaktualizuj permutację po akceleracji
+        best_cmax_val = fneh_best_cmax; // Zaktualizuj Cmax po akceleracji
     }
 
     return perm;
 }
 
-
-// 4. Algorytm Podziału i Ograniczeń (Branch and Bound)
-
-// Funkcja do obliczania dolnego ograniczenia (LB) dla węzła (częściowej permutacji)
-// scheduled_perm: już uszeregowane zadania
-// unscheduled_jobs_indices: indeksy zadań, które jeszcze nie są uszeregowane
+/**
+ * @brief Oblicza dolne ograniczenie (Lower Bound - LB) dla częściowej permutacji w algorytmie Branch and Bound.
+ *
+ * Proste dolne ograniczenie dla Flow Shop może być obliczone jako:
+ * LB = max_j { C_partial_j + sum_k_unscheduled(p_k,j) + min_k_unscheduled(sum_l>j(p_k,l)) }
+ * Gdzie:
+ * - C_partial_j to czas zakończenia ostatniego uszeregowanego zadania na maszynie j.
+ * - sum_k_unscheduled(p_k,j) to suma czasów przetwarzania nieuszeregowanych zadań na maszynie j.
+ * - min_k_unscheduled(sum_l>j(p_k,l)) to minimalna suma czasów przetwarzania dla nieuszeregowanych zadań
+ * na maszynach od j+1 do m (minimalny "ogon" dla pozostałych maszyn).
+ *
+ * @param p_times Macierz czasów przetwarzania zadań.
+ * @param scheduled_perm Częściowa permutacja zadań już uszeregowanych.
+ * @param is_scheduled Wektor booleanów wskazujący, które zadania zostały już uszeregowane.
+ * @return Wartość dolnego ograniczenia dla bieżącego węzła w drzewie BnB.
+ */
 double calculate_lower_bound(const ProcessingTimes& p_times,
                              const Permutation& scheduled_perm,
                              const std::vector<bool>& is_scheduled) {
@@ -265,6 +357,7 @@ double calculate_lower_bound(const ProcessingTimes& p_times,
     if (m_machines == 0) return 0.0;
 
     // Oblicz czasy zakończenia dla już uszeregowanych zadań
+    // To jest podobne do calculate_cmax, ale dla częściowej permutacji
     std::vector<std::vector<double>> C_partial(scheduled_perm.size(), std::vector<double>(m_machines, 0.0));
     if (!scheduled_perm.empty()) {
         for (size_t i = 0; i < scheduled_perm.size(); ++i) {
@@ -277,13 +370,14 @@ double calculate_lower_bound(const ProcessingTimes& p_times,
         }
     }
 
-    double max_lb_for_machine = 0.0;
+    double max_lb_for_machine = 0.0; // Największe dolne ograniczenie spośród wszystkich maszyn
 
-    for (int j = 0; j < m_machines; ++j) { // Dla każdej maszyny j
-        // Czas zakończenia ostatniego uszeregowanego zadania na maszynie j
+    // Dla każdej maszyny oblicz dolne ograniczenie
+    for (int j = 0; j < m_machines; ++j) {
+        // Czas zakończenia ostatniego uszeregowanego zadania na maszynie j (head_time)
         double head_time = scheduled_perm.empty() ? 0.0 : C_partial.back()[j];
 
-        // Suma czasów przetwarzania pozostałych zadań na maszynie j
+        // Suma czasów przetwarzania pozostałych (nieuszeregowanych) zadań na maszynie j
         double sum_remaining_on_machine_j = 0.0;
         for (int job_idx = 0; job_idx < n_total_jobs; ++job_idx) {
             if (!is_scheduled[job_idx]) {
@@ -298,69 +392,97 @@ double calculate_lower_bound(const ProcessingTimes& p_times,
             if (!is_scheduled[job_idx]) {
                 any_unscheduled = true;
                 double current_tail_sum = 0.0;
-                for (int k = j + 1; k < m_machines; ++k) {
+                for (int k = j + 1; k < m_machines; ++k) { // Sumowanie czasów na kolejnych maszynach
                     current_tail_sum += p_times[job_idx][k];
                 }
                 min_tail_sum = std::min(min_tail_sum, current_tail_sum);
             }
         }
-        if (!any_unscheduled) { // Jeśli wszystkie zadania są uszeregowane
+        // Obsługa przypadku, gdy wszystkie zadania są już uszeregowane
+        if (!any_unscheduled) {
             min_tail_sum = 0.0;
         }
-        if (min_tail_sum == std::numeric_limits<double>::max() && any_unscheduled) { // Jeśli j jest ostatnią maszyną, ogon jest 0
+        // Obsługa przypadku, gdy j jest ostatnią maszyną (ogon jest 0)
+        if (min_tail_sum == std::numeric_limits<double>::max() && any_unscheduled) {
             min_tail_sum = 0.0;
         }
 
-
+        // Dolne ograniczenie dla bieżącej maszyny
         double lb_for_machine_j = head_time + sum_remaining_on_machine_j + min_tail_sum;
+        // Wybieramy największe LB spośród wszystkich maszyn jako ogólne dolne ograniczenie
         max_lb_for_machine = std::max(max_lb_for_machine, lb_for_machine_j);
     }
     return max_lb_for_machine;
 }
 
-
-// Rekurencyjna funkcja BnB
+/**
+ * @brief Rekurencyjna funkcja implementująca algorytm Branch and Bound.
+ *
+ * Algorytm Branch and Bound (Podziału i Ograniczeń) przeszukuje przestrzeń rozwiązań
+ * w sposób systematyczny, "przycinając" gałęzie drzewa przeszukiwania,
+ * dla których dolne ograniczenie jest większe niż aktualnie najlepsze znalezione rozwiązanie (górne ograniczenie).
+ *
+ * @param p_times Macierz czasów przetwarzania zadań.
+ * @param current_perm Bieżąca częściowa permutacja zadań budowana w rekurencji.
+ * @param is_scheduled Wektor booleanów wskazujący, które zadania zostały już uszeregowane.
+ * @param global_upper_bound Referencja do aktualnie najlepszego znalezionego Cmax (górne ograniczenie).
+ * @param best_perm_global Referencja do najlepszej permutacji znalezionej do tej pory.
+ * @param n_total_jobs Całkowita liczba zadań.
+ */
 void bnb_recursive(
         const ProcessingTimes& p_times,
         Permutation& current_perm,
         std::vector<bool>& is_scheduled,
-        double& global_upper_bound, // Best Cmax found so far
+        double& global_upper_bound, // Najlepszy Cmax znaleziony do tej pory (górne ograniczenie)
         Permutation& best_perm_global,
-        int n_total_jobs)
-{
-    // Jeśli current_perm zawiera wszystkie zadania, jest to liść
+        int n_total_jobs) {
+    // Warunek bazowy: Jeśli current_perm zawiera wszystkie zadania, jest to pełna permutacja (liść drzewa)
     if (current_perm.size() == (size_t)n_total_jobs) {
-        double cmax_leaf = calculate_cmax(p_times, current_perm);
+        double cmax_leaf = calculate_cmax(p_times, current_perm); // Oblicz Cmax dla tej permutacji
         if (cmax_leaf < global_upper_bound) {
-            global_upper_bound = cmax_leaf;
-            best_perm_global = current_perm;
+            global_upper_bound = cmax_leaf;    // Zaktualizuj globalne górne ograniczenie
+            best_perm_global = current_perm;    // Zaktualizuj globalnie najlepszą permutację
         }
-        return;
+        return; // Zakończ rekurencję dla tej gałęzi
     }
 
-    // Oblicz dolne ograniczenie dla bieżącego węzła
+    // Oblicz dolne ograniczenie (Lower Bound - LB) dla bieżącego węzła (częściowej permutacji)
     double lb = calculate_lower_bound(p_times, current_perm, is_scheduled);
 
-    // Przycinanie (pruning)
+    // Przycinanie (pruning): Jeśli dolne ograniczenie jest większe lub równe
+    // aktualnemu górnemu ograniczeniu, to ta gałąź nie może doprowadzić do lepszego rozwiązania.
     if (lb >= global_upper_bound) {
-        return;
+        return; // Nie ma sensu dalej rozwijać tej gałęzi
     }
 
-    // Rozgałęzienie (Branching)
+    // Rozgałęzienie (Branching): Próbuj dodać każde nieuszeregowane zadanie do bieżącej permutacji
     for (int job_idx = 0; job_idx < n_total_jobs; ++job_idx) {
-        if (!is_scheduled[job_idx]) {
-            current_perm.push_back(job_idx);
-            is_scheduled[job_idx] = true;
+        if (!is_scheduled[job_idx]) { // Jeśli zadanie nie zostało jeszcze uszeregowane
+            current_perm.push_back(job_idx);    // Dodaj zadanie do bieżącej permutacji
+            is_scheduled[job_idx] = true;       // Oznacz zadanie jako uszeregowane
 
+            // Wywołanie rekurencyjne dla nowego stanu (głębszego węzła)
             bnb_recursive(p_times, current_perm, is_scheduled, global_upper_bound, best_perm_global, n_total_jobs);
 
-            // Backtrack
+            // Backtrack: Cofnij zmiany, aby móc eksplorować inne gałęzie
             is_scheduled[job_idx] = false;
             current_perm.pop_back();
         }
     }
 }
 
+/**
+ * @brief Główna funkcja implementująca algorytm Podziału i Ograniczeń (Branch and Bound).
+ *
+ * Algorytm BnB służy do znajdowania optymalnego rozwiązania w przestrzeni dyskretnych problemów optymalizacyjnych.
+ * Zaczyna od oszacowania górnego ograniczenia (np. za pomocą heurystyki, takiej jak NEH),
+ * a następnie rekurencyjnie buduje permutacje, przycinając gałęzie, które na pewno nie doprowadzą
+ * do lepszego rozwiązania niż obecne górne ograniczenie.
+ *
+ * @param p_times Macierz czasów przetwarzania zadań.
+ * @param best_cmax_val Referencja do zmiennej, w której zostanie zwrócona optymalna wartość Cmax.
+ * @return Optymalna permutacja zadań.
+ */
 Permutation branch_and_bound_algorithm(const ProcessingTimes& p_times, double& best_cmax_val) {
     int n_jobs = p_times.size();
     if (n_jobs == 0) {
@@ -368,32 +490,31 @@ Permutation branch_and_bound_algorithm(const ProcessingTimes& p_times, double& b
         return {};
     }
 
-
-
-    // Inicjalizacja górnego ograniczenia (UB) za pomocą heurystyki NEH
-    Permutation initial_perm_neh = neh_algorithm(p_times, best_cmax_val); // best_cmax_val jest tu UB
+    // Krok 1: Inicjalizacja górnego ograniczenia (UB) za pomocą heurystyki (np. NEH)
+    // Dobre początkowe górne ograniczenie może znacznie przyspieszyć działanie BnB.
+    Permutation initial_perm_neh = neh_algorithm(p_times, best_cmax_val); // best_cmax_val zostaje tu ustawione jako UB
     double global_upper_bound = best_cmax_val;
-    Permutation best_perm_global = initial_perm_neh;
+    Permutation best_perm_global = initial_perm_neh; // Najlepsza permutacja znaleziona do tej pory (początkowo z NEH)
 
-    Permutation current_perm;
-    std::vector<bool> is_scheduled(n_jobs, false);
+    Permutation current_perm;                    // Bieżąca częściowa permutacja
+    std::vector<bool> is_scheduled(n_jobs, false); // Wektor do śledzenia uszeregowanych zadań
 
+    // Krok 2: Wywołanie rekurencyjnej funkcji BnB
     bnb_recursive(p_times, current_perm, is_scheduled, global_upper_bound, best_perm_global, n_jobs);
 
-    best_cmax_val = global_upper_bound; // Ostateczny najlepszy Cmax
+    best_cmax_val = global_upper_bound; // Ostateczny, optymalny Cmax
     return best_perm_global;
 }
 
 int main() {
-
-
+    // Przykładowe dane dla 3 zadań i 3 maszyn
     ProcessingTimes p_times_3x3 = {
-            {5, 8, 2},
-            {6, 3, 7},
-            {4, 9, 5}
+            {5, 8, 2}, // Czasy dla Zadania 1 na M1, M2, M3
+            {6, 3, 7}, // Czasy dla Zadania 2 na M1, M2, M3
+            {4, 9, 5}  // Czasy dla Zadania 3 na M1, M2, M3
     };
 
-    // Dane dla Johnsona (3 zadania, 2 maszyny)
+    // Przykładowe dane dla Johnsona (3 zadania, 2 maszyny)
     ProcessingTimes p_times_3x2 = {
             //   M1, M2
             {5, 2}, // Zadanie 1
@@ -401,45 +522,54 @@ int main() {
             {9, 7}  // Zadanie 3
     };
 
-    double cmax_val;
-    Permutation result_perm;
+    double cmax_val;         // Zmienna do przechowywania obliczonego Cmax
+    Permutation result_perm; // Zmienna do przechowywania znalezionej permutacji
 
     std::cout << "--- Dane 3x3 ---\n";
+    // Testowanie algorytmu Przeglądu Zupełnego
     result_perm = brute_force_algorithm(p_times_3x3, cmax_val);
     print_solution("Przeglad Zupelny (3x3)", result_perm, cmax_val);
 
+    // Testowanie algorytmu NEH
     result_perm = neh_algorithm(p_times_3x3, cmax_val);
-    print_solution("NEH/FNEH (3x3)", result_perm, cmax_val);
+    print_solution("NEH (3x3)", result_perm, cmax_val);
 
+    // Testowanie algorytmu FNEH
     result_perm = fneh_algorithm(p_times_3x3, cmax_val);
     print_solution("FNEH (3x3)", result_perm, cmax_val);
 
+    // Testowanie algorytmu Branch and Bound
     result_perm = branch_and_bound_algorithm(p_times_3x3, cmax_val);
     print_solution("Branch and Bound (3x3)", result_perm, cmax_val);
 
     std::cout << "--- Dane 3x2 dla Johnsona ---\n";
+    // Testowanie algorytmu Johnsona (tylko dla 2 maszyn)
     result_perm = johnson_algorithm(p_times_3x2, cmax_val);
     print_solution("Johnson (3x2)", result_perm, cmax_val);
 
     // Przykładowe dane dla większej liczby zadań (np. 4 zadania, 3 maszyny)
-    // Tylko dla heurystyk i BnB (Brute force będzie wolny)
+    // Brute force będzie zbyt wolny dla większej liczby zadań
     ProcessingTimes p_times_4x3 = {
-            {21, 53, 80}, // Z1
-            {65, 10, 23}, // Z2
-            {43, 71, 39}, // Z3
-            {29, 30, 62}  // Z4
+            {21, 53, 80}, // Zadanie 1
+            {65, 10, 23}, // Zadanie 2
+            {43, 71, 39}, // Zadanie 3
+            {29, 30, 62}  // Zadanie 4
     };
 
     std::cout << "--- Dane 4x3 ---\n";
-    // result_perm = brute_force_algorithm(p_times_4x3, cmax_val); // Może być wolne
+    // brute_force_algorithm jest zakomentowany, ponieważ dla 4 zadań może być już bardzo wolny (4! = 24 permutacji, ale złożoność obliczania Cmax rośnie)
+    // result_perm = brute_force_algorithm(p_times_4x3, cmax_val);
     // print_solution("Przeglad Zupelny (4x3)", result_perm, cmax_val);
 
+    // Testowanie NEH dla 4x3
     result_perm = neh_algorithm(p_times_4x3, cmax_val);
-    print_solution("NEH/FNEH (4x3)", result_perm, cmax_val);
+    print_solution("NEH (4x3)", result_perm, cmax_val);
 
+    // Testowanie FNEH dla 4x3
     result_perm = fneh_algorithm(p_times_4x3, cmax_val);
     print_solution("FNEH (4x3)", result_perm, cmax_val);
 
+    // Testowanie Branch and Bound dla 4x3
     result_perm = branch_and_bound_algorithm(p_times_4x3, cmax_val);
     print_solution("Branch and Bound (4x3)", result_perm, cmax_val);
 
